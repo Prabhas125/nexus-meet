@@ -1,0 +1,99 @@
+// Prisma Schema for NexusMeet
+// PostgreSQL database with all required tables
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users Table ───────────────────────────────────────────────────────────────
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  avatar    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  hostedMeetings Meeting[]     @relation("HostedMeetings")
+  participations Participant[]
+  messages       Message[]
+  files          File[]
+
+  @@map("users")
+}
+
+// ─── Meetings Table ─────────────────────────────────────────────────────────────
+model Meeting {
+  id        String   @id @default(uuid())
+  roomCode  String   @unique @map("room_code")
+  title     String   @default("Untitled Meeting")
+  hostId    String   @map("host_id")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  endedAt   DateTime? @map("ended_at")
+
+  // Relations
+  host         User          @relation("HostedMeetings", fields: [hostId], references: [id], onDelete: Cascade)
+  participants Participant[]
+  messages     Message[]
+  files        File[]
+
+  @@map("meetings")
+}
+
+// ─── Participants Table ─────────────────────────────────────────────────────────
+model Participant {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  meetingId String   @map("meeting_id")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  leftAt    DateTime? @map("left_at")
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, meetingId])
+  @@map("participants")
+}
+
+// ─── Messages Table ─────────────────────────────────────────────────────────────
+model Message {
+  id        String   @id @default(uuid())
+  senderId  String   @map("sender_id")
+  meetingId String   @map("meeting_id")
+  content   String
+  type      String   @default("text") // text | system | file
+  timestamp DateTime @default(now())
+
+  // Relations
+  sender  User    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+// ─── Files Table ────────────────────────────────────────────────────────────────
+model File {
+  id         String   @id @default(uuid())
+  uploaderId String   @map("uploader_id")
+  meetingId  String   @map("meeting_id")
+  fileName   String   @map("file_name")
+  fileUrl    String   @map("file_url")
+  fileSize   Int      @map("file_size")
+  mimeType   String   @map("mime_type")
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+
+  // Relations
+  uploader User    @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  meeting  Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("files")
+}
