@@ -1,0 +1,89 @@
+version: '3.8'
+
+# ─── NexusMeet Docker Compose ───────────────────────────────────────────────────
+# Services: PostgreSQL, Backend (Node.js), Frontend (React), Nginx (reverse proxy)
+
+services:
+  # ── PostgreSQL Database ────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexusmeet_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: nexusmeet_pass
+      POSTGRES_DB: nexusmeet
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"   # Map to 5433 to avoid local PostgreSQL conflicts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nexusmeet_net
+
+  # ── Backend (Node.js + Express + Socket.io) ────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nexusmeet_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://postgres:nexusmeet_pass@postgres:5432/nexusmeet
+      JWT_SECRET: change_this_to_a_secure_random_string_in_production
+      JWT_EXPIRES_IN: 7d
+      CLIENT_URL: http://localhost
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - nexusmeet_net
+
+  # ── Frontend (React build served by nginx) ─────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: /api
+        REACT_APP_SOCKET_URL: ""  # Empty = same origin through nginx
+    container_name: nexusmeet_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - nexusmeet_net
+
+  # ── Nginx (Reverse Proxy) ──────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: nexusmeet_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - backend_uploads:/uploads:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - nexusmeet_net
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  backend_uploads:
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  nexusmeet_net:
+    driver: bridge
